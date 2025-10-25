@@ -1,36 +1,59 @@
-Live Video Streaming Solution using GStreamer and H.264
+# Live Video Streaming with Optional Object Detection
 
-Overview:
-This project captures live video from a webcam using GStreamer, encodes it with H.264, and streams it via UDP. A simple HTML5 player connects to the stream.
+This project demonstrates real-time video streaming from a webcam using Python and GStreamer, with two modes:
+1. Basic live video streaming (`start_stream.py`)
+2. Live video streaming with object detection and tracking (`object_stream.py`)
 
-Prerequisites:
-- Python 3.7+
-- GStreamer with plugins:
-  sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+Both modes stream video using HLS (HTTP Live Streaming) and serve it via a local HTTP server.
 
-Setup:
-1. Clone the repo:
-   git clone https://github.com/yourusername/video_streaming_solution.git
-   cd video_streaming_solution
+---
 
-2. Install Python dependencies:
-   pip install -r requirements.txt
+## Project Files
 
-3. Start the stream:
-   python app/streamer.py
+| File Name         | Description                                                                 |
+|------------------|-----------------------------------------------------------------------------|
+| `start_stream.py` | Streams raw webcam feed using GStreamer without any object detection.       |
+| `object_stream.py`| Streams webcam feed with YOLOv5-based object detection and centroid tracking.|
 
-4. Run a local server to serve the web player:
-   cd app
-   python -m http.server 8080
+---
 
-5. Open your browser:
-   http://localhost:8080/static/index.html
+## Features
+### Common Features
+- Real-time webcam capture at 15 FPS.
+- HLS streaming using GStreamer.
+- Local HTTP server on port `8554` to serve `.m3u8` playlist and `.ts` segments.
+- Automatic cleanup of HLS files after streaming ends.
 
-Notes:
-- The stream uses UDP on port 5000.
-- You can adapt the pipeline to stream to Amazon Kinesis or other endpoints.
-- For object detection, integrate OpenCV or TensorFlow in a separate thread.
+### Object Detection Mode (`object_stream.py`)
+- Uses **YOLOv5n** for lightweight object detection.
+- Tracks objects using a custom **CentroidTracker**.
+- Annotates frames with bounding boxes, class labels, and confidence scores.
+- Filters detections with confidence ≥ 0.75.
+- Performs detection every 10 frames for performance optimization :: to make it lightweight for streaming.
 
-Troubleshooting:
-- Ensure your webcam is accessible via /dev/video0.
-- Use `gst-inspect-1.0` to verify plugin availability.
+## Requirements
+Install the required Python packages:
+
+Also ensure:
+- **GStreamer** is installed and `gst-launch-1.0` is available in your system PATH.
+- Python 3.7 or higher is installed.
+
+## How to Run
+
+### 1. Basic Streaming (no detection)
+python start_stream.py
+
+### 2. Streaming with Object Detection
+python object_stream.py
+
+## Notes
+
+- `ksvideosrc` is used in `start_stream.py` (Windows-specific). Replace with `v4l2src` for Linux or `avfvideosrc` for macOS.
+- `object_stream.py` uses `cv2.VideoCapture(0, cv2.CAP_DSHOW)` for webcam access.
+- GStreamer pipeline parameters (bitrate, segment duration, etc.) can be tuned for performance.
+
+## 🙌 Acknowledgments
+
+- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics)
+- [GStreamer](https://gstreamer.freedesktop.org/)
+- [OpenCV](https://opencv.org/)
