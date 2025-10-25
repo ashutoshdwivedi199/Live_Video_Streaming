@@ -2,10 +2,30 @@ import os
 import cv2
 import subprocess
 import time
+import json
 import numpy as np
 from scipy.spatial import distance as dist
 from collections import OrderedDict
 from ultralytics import YOLO
+
+def load_config(config_path='stream_config.json'):
+    try:
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"⚠️ Failed to load config: {e}")
+        return {
+            "bitrate": 2048,
+            "speed_preset": "ultrafast",
+            "target_duration": 5,                               ## Gstreamer aim to create new segments of length target_duration.
+            "max_files": 30,                                    ## Provides bigger playback with tradeoff on disk size
+            "segment_location": "./hls/%05d.ts",
+            "playlist_location": "./hls/test.m3u8",
+            "playlist_root": "http://localhost:8554/hls/",
+            "frames_interval": 15,                              ## Tradeoff between viewing fluidity and latency
+            "detection_conf": 0.75,                             ## Thresholding for model detection => due to varied luminiousity and other factors
+            "obj_detection_interval": 10                        ## Tradeoff between detection and latency
+        }
 
 http_proc = None
 def launch_http_server():
@@ -90,6 +110,7 @@ class CentroidTracker:
         return self.rects
 
 def start_object_detection_stream():
+    print("******************     LIVE VIDEO STREAMING WITH OBJECT DETECTION     ******************")
     os.makedirs('./hls', exist_ok=True)
 
     model = YOLO('yolov5n.pt')
@@ -103,26 +124,25 @@ def start_object_detection_stream():
     if not cap.isOpened():
         print("Error: Cannot open webcam")
         return
+    config = load_config()
 
     gst_command = [
         r'gst-launch-1.0.exe',
         'fdsrc', '!',
         'rawvideoparse', 'format=bgr', 'width=640', 'height=480', 'framerate=15/1',
         '!', 'videoconvert',
-        '!', 'x264enc', 'tune=zerolatency', 'bitrate=2048', 'speed-preset=ultrafast',
+        '!', 'x264enc', f'tune=zerolatency', f'bitrate={config["bitrate"]}', f'speed-preset={config["speed_preset"]}',
         '!', 'mpegtsmux',
         '!', 'hlssink',
-        'location=./hls/%05d.ts',
-        'playlist-location=./hls/test.m3u8',
-        'playlist-root=http://localhost:8554/hls/',
-        'target-duration=5',
-        'max-files=30'
+        f'location={config["segment_location"]}',
+        f'playlist-location={config["playlist_location"]}',
+        f'playlist-root={config["playlist_root"]}',
+        f'target-duration={config["target_duration"]}',
+        f'max-files={config["max_files"]}'
     ]
-
     gst_process = subprocess.Popen(gst_command, stdin=subprocess.PIPE)
 
-    print("Streaming with object detection and tracking at 15 FPS... Press 'q' to stop.")
-    frame_interval = 1 / 15
+    frame_interval = 1 / config["frames_interval"]
     count = 0
     tracker = CentroidTracker()
     boxes = []
@@ -138,7 +158,7 @@ def start_object_detection_stream():
             if frame.shape[:2] != (480, 640):
                 frame = cv2.resize(frame, (640, 480))
 
-            if count % 10 == 0:
+            if count % config["obj_detection_interval"] == 0:
                 results = model.predict(frame, stream=False, verbose=False)[0]
                 boxes = []
                 for box in results.boxes.xyxy.cpu().numpy():
@@ -151,7 +171,7 @@ def start_object_detection_stream():
             for box, cls, conf in zip(results.boxes.xyxy.cpu().numpy(),
                           results.boxes.cls.cpu().numpy(),
                           results.boxes.conf.cpu().numpy()):
-                if conf >= 0.75:
+                if conf >= config["detection_conf"]:
                     x1, y1, x2, y2 = map(int, box[:4])
                     label = model.names[int(cls)]
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -168,6 +188,7 @@ def start_object_detection_stream():
 
             count += 1
             elapsed = time.time() - start_time
+            #print(frame_interval, elapsed)
             time.sleep(max(0, frame_interval - elapsed))
     finally:
         cap.release()
