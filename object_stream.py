@@ -37,7 +37,7 @@ def launch_http_server():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        print("✅ HTTP server started on port 8554.")
+        print("HTTP server started on port 8554.")
 
 class CentroidTracker:
     def __init__(self, max_disappeared=10):
@@ -197,7 +197,7 @@ def start_object_detection_stream():
         gst_process.wait()
         cv2.destroyAllWindows()
 
-        # 🧹 Delete all files in ./hls/
+        # Delete all files in ./hls/
         hls_dir = './hls'
         try:
             for filename in os.listdir(hls_dir):

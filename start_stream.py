@@ -30,7 +30,7 @@ def launch_http_server():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        print("✅ HTTP server started on port 8554.")
+        print("HTTP server started on port 8554.")
         
 def start_stream():
     print("******************     LIVE VIDEO STREAMING WITHOUT OBJECT DETECTION     ******************")
