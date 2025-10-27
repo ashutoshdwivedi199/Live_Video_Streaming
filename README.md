@@ -53,7 +53,7 @@ Added a config.json file to the project root to control encoding, HLS, and objec
   "detection_conf": 0.75,
   "obj_detection_interval": 10
 }
-```
+
 - To run through json config 'stream_config.json': please run main.py file. However, both start_stream.py & object_stream.py can also be run independently.
 
 ## Requirements
