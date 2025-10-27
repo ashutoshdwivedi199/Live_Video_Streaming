@@ -10,7 +10,7 @@ def load_config(config_path='stream_config.json'):
         with open(config_path, 'r') as f:
             return json.load(f)
     except Exception as e:
-        print(f"⚠️ Failed to load config: {e}")
+        print(f" Failed to load config: {e} !!! ")
         return {
             "bitrate": 512,
             "speed_preset": "superfast",
