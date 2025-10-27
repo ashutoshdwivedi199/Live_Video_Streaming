@@ -34,24 +34,24 @@ Both modes stream video using HLS (HTTP Live Streaming) and serve it via a local
 
 ## Configuration
 Added a config.json file to the project root to control encoding, HLS, and object detection behavior. Example:
-{
-  "use_object_detection": true,
-  "bitrate": 2048,
-  "speed_preset": "ultrafast",
-  "target_duration": 5,
-  "max_files": 30,
-  "segment_location": "./hls/segment_%05d.ts",
-  "playlist_location": "./hls/test.m3u8",
-  "playlist_root": "http://localhost:8554/hls/",
-  "frame_width": 640,
-  "frame_height": 480,
-  "frame_rate": 15,
-  "model_path": "yolov5n.pt",
-  "frames_interval": 20,
-  "detection_conf": 0.75,
-  "obj_detection_interval": 10
-}
-To run through json config 'stream_config.json': please run main.py file. However, both start_stream.py & object_stream.py can also be run independently.
+-{
+ - "use_object_detection": true,
+  -"bitrate": 2048,
+  -"speed_preset": "ultrafast",
+  -"target_duration": 5,
+  -"max_files": 30,
+  -"segment_location": "./hls/segment_%05d.ts",
+  -"playlist_location": "./hls/test.m3u8",
+  -"playlist_root": "http://localhost:8554/hls/",
+  -"frame_width": 640,
+  -"frame_height": 480,
+  -"frame_rate": 15,
+  -"model_path": "yolov5n.pt",
+  -"frames_interval": 20,
+  -"detection_conf": 0.75,
+  -"obj_detection_interval": 10
+-}
+-To run through json config 'stream_config.json': please run main.py file. However, both start_stream.py & object_stream.py can also be run independently.
 
 ## Requirements
 Install the required Python packages:
