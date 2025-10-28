@@ -24,8 +24,8 @@ def load_config(config_path='stream_config.json'):
             "playlist_root": "http://localhost:8554/hls/",
             "frames_interval": 15,                              ## Tradeoff between viewing fluidity and latency
             "detection_conf": 0.75,                             ## Thresholding for model detection => due to varied luminiousity and other factors
-            "obj_detection_interval": 10                        ## Tradeoff between detection and latency
-        }
+            "obj_detection_interval": 10                        ## Tradeoff between detection and latency:
+        }                                                       ## Config["obj_detection_interval"] >= 6. Where 3 is fixed for model out & 3 is atleast for tracking.
 
 http_proc = None
 def launch_http_server():
@@ -51,9 +51,11 @@ class CentroidTracker:
         self.objects[self.next_object_id] = centroid
         self.rects[self.next_object_id] = rect
         self.disappeared[self.next_object_id] = 0
+        #print(f"[Register] Object {self.next_object_id} initialized at centroid {centroid}")
         self.next_object_id += 1
 
     def deregister(self, object_id):
+        #print(f"[Deregister] Object {object_id} removed from tracking")
         del self.objects[object_id]
         del self.rects[object_id]
         del self.disappeared[object_id]
@@ -92,6 +94,7 @@ class CentroidTracker:
                 self.objects[object_id] = input_centroids[col]
                 self.rects[object_id] = rects[col]
                 self.disappeared[object_id] = 0
+                #print(f"[Tracking] Object {object_id} updated to centroid {input_centroids[col]}")
                 used_rows.add(row)
                 used_cols.add(col)
 
@@ -115,21 +118,21 @@ def start_object_detection_stream():
 
     model = YOLO('yolov5n.pt')
 
+    config = load_config()
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 15)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, config["frame_width"])
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config["frame_height"])
+    cap.set(cv2.CAP_PROP_FPS, config["frames_interval"])
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
         print("Error: Cannot open webcam")
         return
-    config = load_config()
 
     gst_command = [
         r'gst-launch-1.0.exe',
         'fdsrc', '!',
-        'rawvideoparse', 'format=bgr', 'width=640', 'height=480', 'framerate=15/1',
+        'rawvideoparse', 'format=bgr', f'width={config["frame_width"]}', f'height={config["frame_height"]}', f'framerate={config["frames_interval"]}/1',
         '!', 'videoconvert',
         '!', 'x264enc', f'tune=zerolatency', f'bitrate={config["bitrate"]}', f'speed-preset={config["speed_preset"]}',
         '!', 'mpegtsmux',
@@ -140,6 +143,7 @@ def start_object_detection_stream():
         f'target-duration={config["target_duration"]}',
         f'max-files={config["max_files"]}'
     ]
+
     gst_process = subprocess.Popen(gst_command, stdin=subprocess.PIPE)
 
     frame_interval = 1 / config["frames_interval"]
@@ -147,38 +151,67 @@ def start_object_detection_stream():
     tracker = CentroidTracker()
     boxes = []
     launch_http_server()
+    id_to_label = {}
     try:
         while True:
+            istracking = 0
             start_time = time.time()
             ret, frame = cap.read()
             if not ret:
                 print("Error: Failed to read frame")
                 break
-
-            if frame.shape[:2] != (480, 640):
-                frame = cv2.resize(frame, (640, 480))
-
-            if count % config["obj_detection_interval"] == 0:
+    
+            if frame.shape[:2] != (config["frame_height"], config["frame_width"]):
+                frame = cv2.resize(frame, (config["frame_width"], config["frame_height"]))
+    
+            if count % config["obj_detection_interval"] < 3:
+                istracking = 0
                 results = model.predict(frame, stream=False, verbose=False)[0]
                 boxes = []
-                for box in results.boxes.xyxy.cpu().numpy():
-                    x1, y1, x2, y2 = box[:4]
-                    boxes.append((int(x1), int(y1), int(x2), int(y2)))
-                tracked = tracker.update(boxes)
-            else:
+                labels = []
+
+                for box, cls, conf in zip(results.boxes.xyxy.cpu().numpy(),
+                              results.boxes.cls.cpu().numpy(),
+                              results.boxes.conf.cpu().numpy()):
+                    if conf >= config["detection_conf"]:  # Only track confident detections
+                        x1, y1, x2, y2 = map(int, box[:4])
+                        label = model.names[int(cls)]
+                        boxes.append((x1, y1, x2, y2))
+                        labels.append(label)
+                        #print(f"[Detection] Frame {count}: {label} detected with confidence {conf:.2f} at ({x1}, {y1}), ({x2}, {y2})")
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(frame, f"Model: {label} {conf:.2f}", (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
                 tracked = tracker.update(boxes)
 
-            for box, cls, conf in zip(results.boxes.xyxy.cpu().numpy(),
-                          results.boxes.cls.cpu().numpy(),
-                          results.boxes.conf.cpu().numpy()):
-                if conf >= config["detection_conf"]:
-                    x1, y1, x2, y2 = map(int, box[:4])
-                    label = model.names[int(cls)]
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(frame, f"{label} {conf:.2f}", (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                    #cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                # Map object IDs to labels
+                for object_id, label in zip(tracker.rects.keys(), labels):
+                    id_to_label[object_id] = label
+            else:
+                istracking = 1
+                tracked = tracker.update(boxes)
+            
+                for object_id, rect in tracked.items():
+                    if object_id not in id_to_label:
+                        continue  # Skip if label is unknown
+            
+                    x1, y1, x2, y2 = rect
+                    cX = int((x1 + x2) / 2.0)
+                    cY = int((y1 + y2) / 2.0)
+                    label = id_to_label[object_id]
+                    #print(f"[Tracking] Frame {count}: {label} at centroid ({cX}, {cY})")
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                    #cv2.circle(frame, (cX, cY), 4, (0, 0, 255), -1)
+                    cv2.putText(frame, f"Tracking: {label}", (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+    
             annotated = frame
+            gst_process.stdin.write(annotated.tobytes())
+            count += 1
+            elapsed = time.time() - start_time
+            time.sleep(max(0, frame_interval - elapsed))
 
             try:
                 gst_process.stdin.write(annotated.tobytes())
@@ -186,10 +219,6 @@ def start_object_detection_stream():
                 print(f"GStreamer write error: {e}")
                 break
 
-            count += 1
-            elapsed = time.time() - start_time
-            #print(frame_interval, elapsed)
-            time.sleep(max(0, frame_interval - elapsed))
     finally:
         cap.release()
         if gst_process.stdin:
